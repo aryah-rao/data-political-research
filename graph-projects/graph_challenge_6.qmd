@@ -1,0 +1,112 @@
+---
+title: "Graph Challenge 6"
+author: "Aryah Rao"
+date: "`r Sys.Date()`"
+format: 
+  docx:
+    reference-doc: ../quarto_template.docx
+    number-sections: true
+    number-depth: 3
+    fig-dpi: 500
+    fig-align: center
+    fig-height: 4
+    fig-width: 6
+execute: 
+  echo: true
+  warning: false
+  message: false
+---
+
+For this graph challenge, apply a custom palette set with `set_palette()` from `{coolorrr}` in a data visualization. The specifics are up to you, but the graph must show something related to conflict, either over time, or how it's correlated with some other factor in a dataset that you've constructed using `{peacesciencer}`. If you get stuck, instead of coming up with something new, you can take code from a previous graph challenge submission and update it with a custom palette.
+
+```{r}
+## open packages
+library(tidyverse)
+library(peacesciencer)
+library(socsci)
+library(coolorrr)
+source(
+  "https://raw.githubusercontent.com/milesdwilliams15/dpr-101-project-files/refs/heads/main/_helper_functions/add_opportunity.R"
+)
+
+# Define custom palettes
+set_palette(
+  qualitative = c("#E88EED", "#2A9D8F","#FF3366","#20A4F3","#011627" ),
+  sequential = c("#FF3366", "#2A9D8F"),
+  diverging = c("#FF3366", "#20A4F3", "#2A9D8F"),
+  binary = c("#E88EED", "#20A4F3")
+)
+```
+
+```{r}
+## start with function that creates state-year data
+Data <- create_stateyears(subset_years = 1816:2010) |>
+  ## add indicators for whether countries were involved in a MID
+  add_gml_mids() |>
+  ## add opportunities for countries
+  add_opportunity()
+```
+
+```{r}
+# Group the data by year and compute unadjusted and adjusted MID initiation rates for each year
+yearly_data <- Data |>
+  group_by(year) |>  # Group the dataset by the 'year'
+  summarize(
+    # Calculate the unadjusted MID initiation rate:
+    unadjusted_rate = sum(gmlmidonset) / n(),
+
+    # Calculate the adjusted MID initiation rate:
+    adjusted_rate = sum(gmlmidonset) / sum(opportunity)
+  )
+
+```
+
+```{r}
+# Create plot comparing unadjusted and adjusted MID initiation rates over time
+ggplot(yearly_data) +
+  aes(x = year) +
+  # Add a line for the unadjusted MID initiation rate
+  geom_line(aes(y = unadjusted_rate, color = "Unadjusted Rate")) +
+  
+  # Add a line for the adjusted MID initiation rate
+  geom_line(aes(y = adjusted_rate, color = "Adjusted Rate")) +
+  
+  # Add labels for the axes, title, and legend
+  labs(
+    x = "Year",
+    y = "MID Initiation Rate",
+    title = "Comparison of Unadjusted and Adjusted MID Initiation Rates \nOver Time",
+    color = "Rate Type"
+  ) +
+  ggpal()
+```
+
+```{r}
+# Create plot comparing unadjusted and adjusted MID initiation rates over time
+ggplot(yearly_data) +
+  aes(x = year) +
+  
+  # Add points for the unadjusted MID initiation rate with translucency
+  geom_point(aes(y = unadjusted_rate, color = "Unadjusted Rate"), alpha = 0.6) +
+  
+  # Add points for the adjusted MID initiation rate with translucency
+  geom_point(aes(y = adjusted_rate, color = "Adjusted Rate"), alpha = 0.6) +
+  
+  # Add a line of best fit for the unadjusted MID initiation rate
+  geom_smooth(aes(y = unadjusted_rate, color = "Unadjusted Rate"), se = FALSE) +
+  
+  # Add a line of best fit for the adjusted MID initiation rate
+  geom_smooth(aes(y = adjusted_rate, color = "Adjusted Rate"), se = FALSE) +
+  
+  # Add labels for the axes, title, and legend
+  labs(
+    x = "Year",
+    y = "MID Initiation Rate",
+    title = "Comparison of Unadjusted and Adjusted MID Initiation Rates \nOver Time",
+    color = "Rate Type"
+  ) +
+  ggpal()
+
+```
+
+This plot compares the unadjusted and adjusted MID initiation rates over time. It visually represents how these rates have evolved, with points displaying the data and lines of best fit illustrating the underlying trends. This plot is based on the same framework as the one used in GC4; however, the results appear different, which may be attributed to updates in the data, packages, or functions used in the analysis.

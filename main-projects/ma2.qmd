@@ -1,0 +1,389 @@
+---
+title: "Main Assignment 2"
+author: "Aryah Rao"
+date: "Date: `r Sys.Date()`"
+format: 
+  docx:
+    reference-doc: ../quarto_template.docx
+    number-sections: true
+    number-depth: 3
+    fig-dpi: 500
+    fig-align: center
+    fig-height: 4
+    fig-width: 6
+execute: 
+  echo: false
+  warning: false
+  message: false
+---
+
+## Introduction
+
+The “long peace” hypothesis - the notion that international conflicts have become less frequent and deadly since World War II - has become a cornerstone of international relations theory. This study aims to provide evidence supporting this hypothesis, while accounting for systemic changes like the growing number of states and increasing global population. Understanding why international conflict has declined matters because it informs how we can sustain and enhance peaceful conditions in the future.
+
+## Data and Design
+
+This analysis employs a month-year level dataset of Militarized Interstate Events (MIEs) spanning from 1816 to 2014, focusing specifically on events with hostility levels of 4 or higher (indicating actual use of military force). The data is drawn from the Correlates of War project and includes key variables such as battle deaths, conflict duration, and various contextual measures, supplemented with state capability and population data from the National Material Capabilities dataset.
+
+To test the long peace hypothesis, I examine both conflict frequency and intensity through multiple metrics. For conflict frequency, I compare raw event counts against rates adjusted for opportunity (events per politically relevant dyad), accounting for the expanding number of potential state interactions over time. For conflict intensity, I analyze both absolute battle deaths and population-adjusted fatality rates, providing crucial context for how deadly conflicts have become relative to humanity’s capacity for violence. This multi-measure approach allows for a more nuanced and comprehensive assessment of trends in international conflict.
+
+```{r}
+library(patchwork)
+library(ggplot2)
+library(tidyr)
+library(tidyverse)
+library(peacesciencer)
+library(coolorrr)
+
+source(
+  "https://raw.githubusercontent.com/milesdwilliams15/dpr-101-project-files/refs/heads/main/_helper_functions/add_opportunity.R"
+)
+
+read_csv(
+  here::here(
+    "dpr-101-project-files-main", "_data", "mie-1.0.csv"
+  )
+) -> raw_dt
+
+create_dyadyears(
+  subset_years = 1816:2014
+) |>
+  add_nmc() |>
+  add_opportunity() -> ps_dt
+
+left_join(
+  raw_dt,
+  ps_dt,
+  by = c("ccode1", "ccode2", "styear" = "year")
+) -> full_dt
+
+full_dt |>
+  filter(hostlev >= 4) |> ## Focus only on events where military action was taken
+  group_by(styear, stmon) |>
+  summarize(
+    ## number of MIEs / month
+    events = n(),
+    ## number of MICs / month
+    confrs = length(unique(micnum)),
+    ## minimum estimate of fatalities
+    fatalmin = sum(
+      fatalmin1 + fatalmin2
+    ),
+    ## maximum estimate of fatalities
+    fatalmax = sum(
+      fatalmax1 + fatalmax2
+    ),
+    ## combined populations of belligerent countries
+    tpop = 1000 * sum(tpop1 + tpop2),
+    ## combined military size of belligerent countries
+    tmil = 1000 * sum(milper1 + milper2),
+    .groups = "drop"
+  ) -> ym_dt
+
+ps_dt |>
+  group_by(year) |>
+  summarize(
+    ## population of all countries in a year
+    wpop = 1000 * sum(tpop1 + tpop2) / 2,
+    ## number of country pairs in a year
+    dyads = n() / 2,
+    ## number of politically relevant pairs in year
+    prds = sum(prd) / 2,
+    ## Braumoeller-Carson measure of relevant pairs
+    opps = sum(opportunity) / 2
+  ) -> y_dt
+
+## merge together
+left_join(
+  ym_dt,
+  y_dt,
+  by = c("styear" = "year")
+) -> ym_dt
+
+ym_dt |>
+  expand(styear, stmon) |>
+  left_join(
+    ym_dt
+  ) |>
+  mutate(
+    across(
+      events:tmil,
+      ~ replace_na(.x, 0)
+    )
+  ) |>
+  group_by(styear) |>
+  mutate(
+    across(
+      wpop:opps,
+      ~ max(.x, na.rm = T)
+    )
+  ) -> ym_dt
+```
+
+## Analysis
+
+The data reveals compelling evidence supporting the long peace hypothesis through two distinct patterns. First, examining conflict frequency reveals a significant decline in military engagements when adjusted for the opportunity for conflict. While raw counts still show occasional spikes, largely due to the increasing number of states in the international system, the opportunity-adjusted measure indicates that states have become far less likely to engage in military confrontations with their potential adversaries, particularly in the post-WWII era. This trend suggests a fundamental shift in conflict resolution strategies, with states increasingly opting for diplomatic solutions over military force.
+
+```{r}
+set_palette(
+  qualitative = c("#488286", "#D64550", "#B8C480", "#922D50", "#3C1B43"),
+  binary = c("#488286", "#D64550")
+)
+```
+
+```{r}
+# military conflicts over time
+ym_dt |>
+  # group by year & count raw and per politically relevant dyad events
+  group_by(styear) |>
+  summarize(
+    events = sum(events),
+    rate_per_prd = events/mean(prds)
+  ) |>
+  # long to use facet_wrap
+  pivot_longer(
+    events:rate_per_prd,
+    names_to = "conflict_type", 
+    values_to = "conflict_count"
+  ) |>
+  ggplot(
+    aes(styear, conflict_count)
+    ) +
+  geom_area(
+    aes(fill = conflict_type), 
+    alpha = 0.3
+    ) +
+  geom_line(
+    aes(color = conflict_type), 
+    size = 1
+    ) +
+  geom_smooth(
+    aes(color = conflict_type), 
+    se = FALSE, 
+    size = 1, 
+    color = "#373F51"
+    ) +
+  # vertical lines for WWI & WWII
+  geom_vline(
+    xintercept = (1914+1945)/2, 
+     alpha = 0.3, 
+     color = "#2C2C54", 
+     size = 15
+    ) +
+  annotate(
+    "text", 
+     x = 1914, 
+     y = Inf, 
+     label = "World Wars", 
+     vjust = 2.5, 
+     hjust = 1.2, 
+     fontface = "bold"
+    ) +
+  # two panels
+  facet_wrap(~conflict_type, scales = "free_y", 
+             labeller = labeller(
+               conflict_type = c(
+                 "events" = "Military Conflicts\n(Raw Count)",
+                 "rate_per_prd" = "Military Conflicts\n(per Politically Relevant\nCountry Pair)"
+               )
+             )) +
+  # prettify
+  scale_x_continuous(
+    breaks = seq(1820, 2010, by = 30),
+    labels = scales::label_number()
+    ) +
+  scale_y_continuous(
+    labels = scales::label_number(big.mark = ",")
+    ) +
+  labs(
+    x = "Year",
+    y = "Military Conflicts",
+    title = "Evidence for the Long Peace: Declining Conflict Rates",
+    subtitle = "While raw count spikes persist with more states, the rate of conflict has declined"
+  ) +
+  theme(
+    plot.title = element_text(face = "bold"),
+    strip.text = element_text(face = "bold"),
+    panel.grid.minor = element_blank(),
+    legend.position = "none"
+  ) +
+  # color palette
+  ggpal(
+    type = "binary",
+    aes = "fill"
+  ) +
+  ggpal(
+    type = "binary", 
+    aes = "color"
+  )
+```
+
+Figure 1: This figure presents the trend in the frequency of military conflicts over time. On the left, we see distinct spikes in military conflicts even post-WWII. On the right, however, the rate of conflicts per politically relevant country pair reveals a steady decline in conflict frequency after WWII.
+
+The decline in conflict lethality after World War II is even more dramatic when examined in detail. The data reveals two distinct trends: First, looking at the full historical period (top panel), we see that both absolute battle deaths and population-adjusted fatalities reached unprecedented peaks during the World Wars, followed by a sharp downward trajectory. Second, focusing on the post-WWII era (bottom panel), we observe a continuing decline in both measures, with notable spikes during the Korean and Vietnam Wars that nevertheless pale in comparison to earlier conflicts. The consistent downward trend suggests that states have not only become more reluctant to engage in military conflict but have also developed more sophisticated means of limiting casualties when conflicts do occur.
+
+```{r}
+#| fig-height: 10
+#| fig-width: 8
+
+# deaths over time
+p1 <- ym_dt |>
+  # group by year & count raw and population adjusted deaths
+  group_by(styear) |>
+  summarize(
+    total_deaths = sum(fatalmax)/1000,
+    deaths_per_million = total_deaths * 1000 / (mean(wpop)/1000000)
+  ) |>
+  # long to use facet_wrap
+  pivot_longer( 
+    deaths_per_million:total_deaths,
+    names_to = "death_type",
+    values_to = "death_count"
+  ) |>
+  mutate(
+    period = if_else(styear <= 1945, "Pre-1945", "Post-1945")
+  ) |>
+  ggplot(aes(styear, death_count)) +
+  geom_bar(
+    stat = "identity", 
+    fill = "black",
+    alpha = 0.3,
+    show.legend = FALSE
+  ) +
+  geom_smooth(
+    aes(color = period), 
+    se = FALSE,
+    size = 1
+  ) +
+  # WWII vertical line
+  geom_vline(xintercept = 1945, 
+             linetype = "dashed", 
+             alpha = 0.5) +
+  annotate("text",
+            x = 1991,
+            y = Inf,
+            label = "WWII Ends",
+            vjust = 4,
+            hjust = 0.7,
+            fontface = "bold"
+  ) +
+  facet_wrap(~death_type, scales = "free_y",
+             labeller = labeller(
+               death_type = c(
+                 "total_deaths" = "Battle Deaths\n(Thousands)",
+                 "deaths_per_million" = "Battle Deaths\n(per Million World Population)"
+               )
+             )) +
+  # prettify
+  scale_x_continuous(breaks = seq(1820, 2015, by = 30)) +
+  scale_y_continuous(labels = scales::label_number(big.mark = ",")) +
+  labs(x = NULL,
+       y = "Fatalities",
+       title = "World Wars mark a turning point in conflict lethality") +
+  theme(plot.title = element_text(face = "bold", size = 11),
+        strip.text = element_text(face = "bold"),
+        panel.grid.minor = element_blank(),
+        legend.position = "none")
+
+p2 <- ym_dt |>
+  # group by year & count raw and population adjusted deaths
+  group_by(styear) |>
+  summarize(
+    total_deaths = sum(fatalmax)/1000,
+    deaths_per_million = total_deaths * 1000 / (mean(wpop)/1000000)
+  ) |>
+  # focun on post WWII
+  filter(styear > 1945) |>
+  pivot_longer(deaths_per_million:total_deaths,
+               names_to = "death_type",
+               values_to = "death_count") |>
+  ggplot(aes(styear, death_count)) +
+  geom_bar(
+    stat = "identity", 
+    aes(fill = death_type), 
+    alpha = 0.5
+    ) +
+  geom_smooth(
+    aes(color = death_type), 
+    se = FALSE, 
+    size = 1
+    ) +
+  # vertical lines for major wars
+  geom_vline(xintercept = c(1950, 1965, 1991),
+             linetype = "dashed",
+             alpha = 0.3) +
+  # annotations for each event
+  annotate("text", x = 1950, y = Inf,
+           label = "Korean\n War",
+           vjust = 4, 
+           hjust = -0.1,
+           fontface = "bold"
+           ) +
+  annotate("text", x = 1965, y = Inf,
+           label = "Vietnam\n War",
+           vjust = 7, 
+           hjust = -0.1,
+           fontface = "bold"
+           ) +
+  annotate("text", x = 1991, y = Inf,
+           label = "End of\nCold War",
+           vjust = 5, 
+           hjust = -0.1,
+           fontface = "bold"
+           ) +
+  facet_wrap(~death_type, scales = "free_y",
+             labeller = labeller(
+               death_type = c(
+                 "total_deaths" = "Battle Deaths\n(Thousands)",
+                 "deaths_per_million" = "Battle Deaths\n(per Million World Population)"
+               )
+             )) +
+  # prettify
+  scale_x_continuous(breaks = seq(1945, 2015, by = 10)) +
+  scale_y_continuous(labels = scales::label_number(big.mark = ",")) +
+  labs(x = "Year",
+       y = "Fatalities",
+       title = "Major Cold War conflicts caused temporary spikes in an overall downward trend") +
+  theme(plot.title = element_text(face = "bold", size = 11),
+        strip.text = element_text(face = "bold"),
+        panel.grid.minor = element_blank(),
+        legend.position = "none"
+    )
+
+# combine the two plots 
+(p1 / p2) +
+  plot_annotation(
+    title = "The Declining Lethality of International Conflicts",
+    subtitle = "Both absolute and population-adjusted battle deaths show dramatic post-WWII decline",
+    theme = theme(
+      plot.title = element_text(face = "bold", size = 14),
+      plot.subtitle = element_text(size = 11)
+    )
+  ) +
+  # color palettes
+  ggpal(
+    type = "binary",
+    aes = "fill"
+  ) +
+  ggpal(
+    type = "binary",
+    aes = "color"
+  )
+```
+
+Figure 2: The two panels demonstrate the declining lethality of international conflicts. The top panel shows the full historical trend (1816-2014), highlighting how both raw battle deaths and population-adjusted fatalities peaked during the World Wars before declining dramatically. The bottom panel focuses on the post-WWII era (1945-2014), revealing that while major Cold War conflicts (Korean War, Vietnam War) caused significant spikes in fatalities, they were considerably less lethal than earlier conflicts.
+
+## Conclusion
+
+This analysis provides empirical support for the long peace hypothesis, demonstrating that the post-WWII era represents a transformation in international conflict patterns. The consistent decline in both the frequency and lethality of military engagements, especially when accounting for systemic changes, suggests a fundamental shift in how states approach conflict and maintain international order. This transformation likely reflects multiple reinforcing factors: the deterrent effect of nuclear weapons, the strengthening of international institutions, the growth of economic interdependence, and the spread of democratic norms.
+
+These findings have profound implications for international relations theory and policy. They suggest that the post-WWII international order, despite its imperfections, has been remarkably successful at constraining military conflict and promoting alternative means of dispute resolution. However, this success should not breed complacency. Rather, it should motivate continued investment in the institutions, norms, and practices that have helped produce this more peaceful world. Understanding and preserving the conditions that have enabled the long peace remains crucial for ensuring its continuation in an increasingly complex international environment.
+
+\newpage
+
+## Code Appendix
+
+<!-- Don't touch this! This lets me see your code at the end of the rendered document. -->
+
+```{r ref.label=knitr::all_labels(), echo=TRUE, eval=FALSE}
+```

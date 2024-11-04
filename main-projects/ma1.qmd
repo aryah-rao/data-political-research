@@ -1,0 +1,268 @@
+---
+title: "Main Assignment"
+author: "Aryah Rao, Shizza Shafqat, Ichhit Joshi"
+date: "Date: `r Sys.Date()`"
+format: 
+  docx:
+    reference-doc: ../quarto_template.docx
+    number-sections: true
+    number-depth: 3
+    fig-dpi: 500
+    fig-align: center
+    fig-height: 4
+    fig-width: 6
+execute: 
+  echo: false
+  warning: false
+  message: false
+---
+
+## Introduction
+
+Election fraud has been a heated topic in U.S. politics, particularly in the aftermath of the 2020 Presidential election. This analysis aims to determine whether fraud played a role by examining state-level data from both the 2016 and 2020 elections, alongside confirmed fraud cases and election integrity scores from the Heritage Foundation. Specifically, we seek to uncover whether states with a higher historical frequency of fraud and lower election integrity rankings show unusual deviations in vote shares between the two elections. Additionally, we aim to explore whether fraud risk tends to be associated with states leaning toward one political party over the other.
+
+Through a series of four data visualizations, we will examine key patterns, including the geographic distribution of fraud scores, shifts in vote shares, and the relationship between confirmed fraud cases and election integrity rankings. These visual insights are critical for determining whether the narrative of fraud influencing the 2020 election is supported by the data and for assessing potential correlations between fraud risk and political party dominance.
+
+```{r}
+# Load necessary libraries
+library(tidyverse)
+library(ggplot2)
+library(usmap)
+library(geofacet)
+
+# Load data
+data_url <- "https://tinyurl.com/2s3sum5s"
+ma1_data <- read_csv(data_url)
+```
+
+## Data
+
+In this analysis, we work with a state-level dataset that includes U.S. Presidential election returns from 2016 and 2020, covering all 50 states plus the District of Columbia. The dataset provides essential insights into vote counts for Democratic, Republican, and third-party candidates, alongside critical metrics related to election integrity and confirmed instances of election fraud, as compiled by the Heritage Foundation. This comprehensive dataset allows us to explore connections between historical fraud, election integrity, and shifts in vote shares between the two elections.
+
+### Key variables used in this analysis:
+
+-   **`dem_2016` and `dem_2020`**: The number of votes cast for the Democratic presidential candidates in 2016 and 2020, respectively.
+
+-   **`rep_2016` and `rep_2020`**: The number of votes cast for the Republican presidential candidates in 2016 and 2020, respectively.
+
+-   **`fraud_rank`**: A ranking of state-level election integrity, where higher values indicate worse integrity, as assessed by the Heritage Foundation.
+
+-   **`fraud_score`**: An election integrity score that considers factors such as voter identification requirements, accessibility, and mail-in voting security (with higher values indicating better integrity).
+
+-   **`cum_fraud_82_24`**: The cumulative number of confirmed voter fraud cases from 1982 to 2024.
+
+To investigate whether fraud played a role in the 2020 election, we will visualize these variables using a series of maps and scatter plots. The maps will help us illustrate geographical distributions, such as changes in Democratic and Republican vote shares from 2016 to 2020. Additionally, we will cross-reference these vote changes with election integrity rankings and fraud cases to identify any unusual patterns. For instance, we will examine whether states with lower election integrity rankings or higher fraud cases show more significant deviations in vote shares, or whether these states tend to lean more toward one political party. By comparing these elements, we aim to provide a clearer understanding of the role that election fraud may have played in the 2020 election, while critically evaluating the reliability of the dataset.
+
+## Analysis
+
+```{r}
+# Calculate the Democratic, Republican, and Other vote share for 2016 and 2020
+ma1_data <- ma1_data %>%
+  mutate(dem_share_2016 = dem_2016 / total_2016 * 100,
+         rep_share_2016 = rep_2016 / total_2016 * 100,
+         other_share_2016 = other_2016 / total_2016 * 100,
+         dem_share_2020 = dem_2020 / total_2020 * 100,
+         rep_share_2020 = rep_2020 / total_2020 * 100,
+         other_share_2020 = other_2020 / total_2020 * 100)
+
+# Prepare data for change in vote share between 2016 and 2020
+ma1_data <- ma1_data %>%
+  mutate(dem_share_change = dem_share_2020 - dem_share_2016,
+         rep_share_change = rep_share_2020 - rep_share_2016,
+         other_share_change = other_share_2020 - other_share_2016)
+
+```
+
+```{r}
+# Create a new column for the winning party in 2020 and 2016
+ma1_data <- ma1_data %>%
+  mutate(winning_party_2020 = case_when(dem_2020 > rep_2020 ~ "Democratic",
+                                        rep_2020 > dem_2020 ~ "Republican",
+                                        TRUE ~ "Other"),
+         winning_party_2016 = case_when(dem_2016 > rep_2016 ~ "Democratic",
+                                        rep_2016 > dem_2016 ~ "Republican",
+                                        TRUE ~ "Other"))
+
+# Create a new column to identify switched states
+ma1_data <- ma1_data %>%
+  mutate(switched_party = case_when(
+    winning_party_2016 != winning_party_2020 & winning_party_2020 == "Democratic" ~ "Switched to Democratic",
+    winning_party_2016 != winning_party_2020 & winning_party_2020 == "Republican" ~ "Switched to Republican",
+    winning_party_2016 != winning_party_2020 & winning_party_2020 == "Other" ~ "Switched to Other",
+    TRUE ~ "No Switch"
+  ))
+
+# Filter for only the switched states
+switched_states <- ma1_data %>%
+  filter(switched_party != "No Switch")
+```
+
+```{r, fig.cap = "Figure 1: Vote Share Changes in the 2020 Presidential Election compared to 2016. Democratic vote shares increased in most states, while Republican vote shares decreased.", fig.width=10, fig.height=5}
+library(patchwork)  # For combining the plots
+
+# Plot for Democratic vote share change
+plot_dem <- plot_usmap(data = ma1_data, regions = "states", values = "dem_share_change") +
+  scale_fill_gradient2(low = "white", high = "steelblue", 
+                       midpoint = 0, name = "Democratic Vote Change") +
+  labs(title = "Democratic Vote Share Change") +
+  theme_minimal() +  # Clean and simple theme
+  theme(legend.position = "bottom",
+        plot.title = element_text(size = 14, face = "bold"))
+
+# Plot for Republican vote share change without lat/long
+plot_rep <- plot_usmap(data = ma1_data, regions = "states", values = "rep_share_change") +
+  scale_fill_gradient2(low = "white", high = "#d73027", 
+                       midpoint = 0, name = "Republican Vote Change") +
+  labs(title = "Republican Vote Share Change") +
+  theme_minimal() +  # Clean and simple theme
+  theme(legend.position = "bottom",
+        plot.title = element_text(size = 14, face = "bold"))
+
+# Combine the two plots side by side using patchwork and adjust the layout
+plot_dem + plot_rep + 
+  plot_layout(ncol = 2, widths = c(1, 1)) + 
+  plot_annotation(title = "Vote Share Changes in 2020 vs 2016: Democratic and Republican", 
+                  theme = theme(plot.title = element_text(size = 16, face = "bold", hjust = 0.5)))
+```
+
+To begin our exploration, we analyzed how the Republican and Democratic vote shares shifted between the 2016 and 2020 U.S. Presidential Elections. This pair of maps visualizes the change in Democratic and Republican vote shares across the states. The left map highlights the increase in Democratic vote share, while the right map shows the corresponding shifts for the Republican vote share.
+
+This pair of maps visualizes the change in Democratic and Republican vote shares between the 2016 and 2020 U.S. Presidential elections across the states. The left map highlights the increase in Democratic vote share, while the right map shows the corresponding shifts for the Republican vote share.
+
+**Democratic Vote Share Increase:**
+
+From 2016 to 2020, Democratic vote share increased across much of the country, particularly in key battleground states such as Georgia, Arizona, and Michigan. These states played a pivotal role in securing the Democratic victory in the 2020 election. The geographic distribution of increased Democratic support suggests a broader shift in voter sentiment, with traditionally Republican-leaning regions, such as parts of the Midwest and Southwest, showing significant gains for the Democrats. This is a critical pattern as these regions are historically competitive and have substantial electoral college influence.
+
+**Republican Vote Share Decline:**
+
+Conversely, the Republican vote share showed notable declines across several states, particularly in the Midwest and Southwest—regions that have traditionally been strongholds for the party. States such as Arizona, which was a Republican stronghold in 2016, shifted significantly toward the Democrats in 2020. This decline may reflect changing voter demographics or shifting allegiances in response to the political climate and campaign strategies.
+
+**Broader Implications:**
+
+These shifts in vote shares highlight significant political realignments, particularly in battleground states. Democratic gains in traditionally competitive states suggest successful outreach and demographic changes, while Republican losses point to challenges in maintaining historical strongholds. Utah experienced an increase in vote share for both major parties. This could indicate that third-party voters from 2016 consolidated behind either the Democratic or Republican candidates in 2020, leading to an overall boost for both parties. This reflects the unique political landscape in Utah, where third-party candidates historically performed well in 2016, but voters appeared to align more strongly with the two major parties in 2020.
+
+```{r, fig.cap = "Figure 2: Comparison of Democratic and Republican Party Vote Shares vs. Election Integrity Scores (2016 and 2020). Higher election integrity scores correlate with increased Republican vote shares and decreased Democratic and third-party vote shares, highlighting the impact of stricter voting regulations on electoral outcomes."}
+# Prepare data for both 2016 and 2020 in a long format for faceting
+ma1_data_long <- ma1_data %>%
+  pivot_longer(cols = c(dem_share_2016, rep_share_2016, 
+                        dem_share_2020, rep_share_2020),
+               names_to = c("party", "year"),
+               names_pattern = "(.*)_(\\d{4})",
+               values_to = "vote_share")
+
+# Plot with facets for year comparison, excluding 'other' share
+ggplot(ma1_data_long, aes(x = fraud_score, y = vote_share, color = party)) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(method = "lm", se = FALSE) +
+  facet_wrap(~ year) +
+  scale_color_manual(values = c("dem_share" = "steelblue", 
+                                "rep_share" = "#d73027")) +
+  labs(title = "Comparison of Democratic and Republican Vote Share (2016 vs 2020)",
+       x = "Election Integrity Score",
+       y = "Vote Share (%)") +
+  theme_minimal()
+```
+
+As we deepen our exploration, the relationship between election integrity scores and party vote shares becomes clearer. The second figure plots Democratic, Republican, and third-party vote shares against state-level election integrity scores for 2016 and 2020. This visualization reveals a notable pattern: as election integrity scores rise, Democratic vote shares tend to decline, while Republican vote shares increase. The election integrity scores, which reflect stricter voting laws, appear to favor Republican candidates, suggesting a stronger performance in states with more stringent regulations.
+
+This figure supports the broader narrative that election integrity and party performance are intertwined. The patterns show that Republicans tend to perform better in states with higher integrity scores, which might be linked to stricter voting laws that influence voter behavior and turnout. As we compare these trends across the two election cycles, it becomes evident that such regulations could have a measurable impact on election outcomes, especially in tightly contested states. This raises important questions about how voting regulations influence electoral outcomes and whether they might inadvertently skew results by affecting voter turnout and party allegiance.
+
+```{r, fig.cap="Figure 3: Election Integrity Scores by State in 2020, Color-Coded by Winning Party. States with higher election integrity scores tend to lean Republican, while states with lower scores are generally Democratic-leaning, raising questions about the relationship between stricter election laws and party performance."}
+# Create the column plot
+ggplot(ma1_data, aes(x = reorder(state_po, fraud_score), y = fraud_score, fill = winning_party_2020)) +
+  geom_col() +
+  scale_fill_manual(values = c("Democratic" = "steelblue", "Republican" = "#d73027")) +
+  labs(title = "Election Integrity Scores by State (2020)",
+       x = "State",
+       y = "Election Integrity Score",
+       fill = "Winning Party") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+This visualization highlights the relationship between state-level election integrity scores and the winning party in the 2020 U.S. Presidential election. It reveals a clear pattern: Republican-leaning states generally have higher election integrity scores, while Democratic-leaning states tend to have lower scores. This suggests that states with stricter election laws—such as those requiring voter ID or restricting mail-in voting—are more likely to vote Republican, whereas states with more lenient voting laws, like those with easier access to mail-in ballots, are more likely to lean Democratic.
+
+While this pattern may suggest that stricter voting laws correlate with improved election security, it also raises important questions about how election integrity is measured. For example, states like California and New York, which have lower integrity scores but higher voter turnout, challenge the assumption that stricter laws necessarily result in better election security. These states have more inclusive voting regulations, which allow for greater access to the ballot, potentially contributing to their lower scores.
+
+This figure invites further discussion on the criteria used to measure election integrity and whether these measures are influenced by partisan perspectives. The relationship between party dominance and election integrity scores highlights the potential for these scores to be shaped by political agendas rather than objective security concerns. This invites further scrutiny of how election integrity is defined and whether these scores reflect actual risks or reinforce partisan narratives.
+
+```{r, fig.cap="Figure 4: Comparison of Election Integrity Ranks with Confirmed Fraud Cases (1982-2024). Contrary to expectations, states with lower election integrity scores do not exhibit a higher number of confirmed fraud cases, suggesting a disconnect between the integrity ranking system and actual fraud occurrences."}
+# Scatter plot comparing fraud rank with cumulative fraud cases
+ggplot(ma1_data, aes(x = fraud_rank, y = cum_fraud_82_to_24)) +
+  geom_point(alpha = 0.5, color = "turquoise") +
+  geom_smooth(method = "lm", se = FALSE, color = "black") +  # Linear regression line
+  labs(title = "Comparison of Election Integrity Rank with Confirmed Fraud Cases",
+       x = "Election Integrity Rank",
+       y = "Cumulative Confirmed Fraud Cases (1982-2024)") +
+  theme_minimal()
+
+```
+
+In this final visualization, we explore the relationship between state election integrity ranks and the cumulative number of confirmed fraud cases from 1982 to 2024. Intuitively, we might expect that states with lower election integrity (represented by higher ranks) would have more confirmed cases of fraud. However, the scatter plot shows no clear upward trend linking higher fraud cases to poorer integrity ranks. In fact, the trend line indicates a slight downward relationship, suggesting that states with worse election integrity rankings do not necessarily experience more confirmed fraud cases.
+
+This finding raises critical questions about the validity of the election integrity ranking system. If states with lower integrity ranks do not consistently exhibit more confirmed fraud, it casts doubt on whether these rankings reflect real vulnerabilities in the electoral process. Instead, it seems that the criteria used to determine these rankings may focus more on potential risks rather than actual instances of fraud. As a result, the integrity rankings may not be as predictive of election fraud as intended.
+
+This disconnect complicates the narrative around election security and integrity. If the rankings are based on factors that do not correlate with actual fraud, it suggests that they may serve more as indicators of perceived risk than of true electoral vulnerabilities. This invites further scrutiny into how we define and measure election integrity, as well as whether these metrics align with the realities of election fraud.
+
+## Implications
+
+This analysis challenges common assumptions about election fraud and integrity in the U.S. While the Heritage Foundation's election integrity scores suggest certain states have more vulnerabilities, the data shows no strong correlation between lower integrity scores and higher instances of confirmed fraud cases. This disconnect raises important questions about the validity and accuracy of these integrity rankings. The lack of transparency in how these scores are calculated leaves room for skepticism, as it is unclear whether the rankings are based on actual vulnerabilities or politically motivated criteria. To ensure the credibility of these rankings, it is essential that the Heritage Foundation, and other organizations that assess election security, be transparent about the metrics, methodology, and criteria used to evaluate integrity. Without transparency, public trust in these scores—and the policies that rely on them—may be undermined.
+
+Moreover, this analysis finds no concrete evidence to support claims of widespread election fraud in the 2020 U.S. election. The available data does not show a significant relationship between fraud cases and the deviations in vote shares between the 2016 and 2020 elections. While some states may have procedural vulnerabilities, the lack of correlation between fraud cases and lower integrity scores suggests that these procedural issues did not lead to meaningful fraud or manipulation of election outcomes. As such, the data does not substantiate the assertion that fraud played a decisive role in the 2020 election.
+
+In conclusion, this analysis underscores the need for a reassessment of how election integrity is measured and defined. The metrics currently in use may not accurately reflect real risks, and organizations must ensure transparency in their assessments to maintain public trust. Furthermore, the data does not support the notion of widespread election fraud in 2020.
+
+## Appendix
+
+```{r, fig.cap="Figure 6: This map highlights the states that switched from voting Republican in 2016 to Democratic in 2020. It provides insights into shifting political landscapes across the U.S. and identifies key battleground states that played a significant role in the 2020 Presidential election outcome."}
+# Plot the switched states
+plot_usmap(data = switched_states %>% filter(switched_party == "Switched to Democratic"), 
+           values = "switched_party", regions = "states") +
+  scale_fill_manual(values = c("Switched to Democratic" = "steelblue"), name = "Switched To") +
+  labs(title = "States That Switched to Democratic Party (2016 to 2020)") +
+  theme(legend.position = "none")  # Remove the legend
+```
+
+```{r, fig.cap="Figure 5: This scatter plot explores how vote shares for Democratic, Republican, and other parties changed between the 2016 and 2020 elections across states with different election integrity ranks."}
+# Prepare data for change in vote share between 2016 and 2020
+ma1_data <- ma1_data %>%
+  mutate(dem_share_change = dem_share_2020 - dem_share_2016,
+         rep_share_change = rep_share_2020 - rep_share_2016,
+         other_share_change = other_share_2020 - other_share_2016)
+
+# Reshape the data to long format for easier plotting
+ma1_data_long_change <- ma1_data %>%
+  pivot_longer(cols = c(dem_share_change, rep_share_change, other_share_change),
+               names_to = "party",
+               values_to = "share_change")
+
+# Create the scatter plot with alpha set to 0.2 and a linear regression model
+ggplot(ma1_data_long_change, aes(x = fraud_rank, y = share_change, color = party)) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(method = "lm", se = FALSE) +  # Add linear regression line
+  scale_color_manual(values = c("dem_share_change" = "steelblue", 
+                                "rep_share_change" = "#d73027", 
+                                "other_share_change" = "black")) +
+  labs(title = "Change in Vote Share (2016 to 2020) vs. Fraud Rank",
+       x = "Election Integrity Rank",
+       y = "Vote Share Change (%)") +
+  theme_minimal()
+
+```
+
+```{r, fig.cap="Figure 7: This bar plot compares the average election integrity scores for states based on the winning party in the 2020 election. It reveals that Republican-leaning states generally have higher election integrity scores, while Democratic-leaning states tend to have lower scores."}
+# Summarize the data: calculate the mean fraud_score for each party
+party_integrity_summary <- ma1_data %>%
+  group_by(winning_party_2020) %>%
+  summarize(avg_fraud_score = mean(fraud_score, na.rm = TRUE))
+
+# Create the bar plot
+ggplot(party_integrity_summary, aes(x = winning_party_2020, y = avg_fraud_score, fill = winning_party_2020)) +
+  geom_bar(stat = "identity", width = 0.6) +
+  scale_fill_manual(values = c("Democratic" = "steelblue", "Republican" = "#d73027")) +
+  labs(title = "Average Election Integrity Score by Winning Party (2020)",
+       x = "Winning Party",
+       y = "Average Election Integrity Score",
+       fill = "Winning Party") +
+  theme_minimal()
+```

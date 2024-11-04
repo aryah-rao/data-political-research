@@ -1,0 +1,64 @@
+---
+title: "Graph Challenge 5"
+author: "Aryah Rao"
+date: "`r Sys.Date()`"
+format: 
+  docx:
+    reference-doc: ../quarto_template.docx
+    number-sections: true
+    number-depth: 3
+    fig-dpi: 500
+    fig-align: center
+    fig-height: 4
+    fig-width: 6
+execute: 
+  echo: true
+  warning: false
+  message: false
+---
+
+The long peace theory generally holds that conflict is less likely now than in the past, but it argues this is true especially for major powers. Create a plot that shows the rate of conflict initiation over time among non-major powers versus major powers to see if this is the case. Use `{peacesciencer}` to create a state-year dataset and then populate it with the variables you need using `add_cow_majors()` and `add_mid_opportunity()` (remember that this is a custom function I made, so check the lecture notes to see how to use it). Use `{geomtextpath}` in some way to help compare trends in a single graph.
+
+First, we create a state-year dataset, add indicators for major powers, and conflict opportunity. This dataset spans from 1816 to 2010.
+
+```{r}
+# Load necessary packages
+library(tidyverse)
+library(peacesciencer)
+library(ggplot2)
+library(geomtextpath)
+source(
+  "https://raw.githubusercontent.com/milesdwilliams15/dpr-101-project-files/refs/heads/main/_helper_functions/add_opportunity.R"
+)
+
+# Create a state-year dataset and add major power and conflict data
+state_year_data <- create_stateyears(subset_years = 1816:2010) %>%
+  add_cow_majors() %>%          # Add major power indicator
+  add_mid_opportunity()         # Add conflict opportunity
+
+# Summarize data to calculate MID initiation rate for major and non-major powers
+data_summary <- state_year_data %>%
+  group_by(year, cowmaj) %>%
+  summarize(mid_init_rate = sum(mid_inits) / sum(n_pairs), .groups = 'drop') %>%
+  mutate(power_status = ifelse(cowmaj == 1, "Major Power", "Non-Major Power"))
+```
+
+```{r}
+# Find the peaks of each line for labeling
+peak_labels <- data_summary %>%
+  group_by(power_status) %>%
+  filter(mid_init_rate == max(mid_init_rate))
+
+# Plot the conflict initiation rate over time
+ggplot(data_summary, aes(x = year, y = mid_init_rate, color = power_status)) +
+  geom_line(size = 1.2) +
+  geom_text(data = peak_labels, aes(label = power_status, x = year, y = mid_init_rate), hjust = -0.1) +
+  labs(
+    x = "Year",
+    y = "Conflict Initiation Rate",
+    title = "Conflict Initiation Rate Over Time:\nMajor vs Non-Major Powers"
+  ) +
+  theme(legend.position = "none")
+```
+
+The plot shows that major powers had significantly higher peaks in conflict initiation rates, especially around World War II, while non-major powers maintained consistently lower rates over time (except the peak around World War II).
